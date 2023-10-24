@@ -1,9 +1,9 @@
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
 
 # グローバル変数
 FILE_HEADER_SIZE = 14
-THRESH_OTSU = "otsu"
 
 def readBitMapData(src:str) -> tuple[dict, bytearray,np.ndarray]:
     """
@@ -47,38 +47,48 @@ def getBitMapHeader(dat:bytearray) -> dict:
 
     return info
 
-def convertBinaryData(img:np.ndarray, method:str=THRESH_OTSU) -> np.ndarray:
+def getGrayScale(img:np.ndarray) -> np.ndarray:
     """
         - Description
-            二値化を行う
-
+            グレースケールの画像を取得する
         - Arg
-            img:bytearray       -> 二値化前の画像(グレースケール)
-
+            img:np.ndarray  -> 元画像
         - Ret
-            bin_img:bytearray   -> 二値化後の画像
+            gray_img:np.ndarray -> グレースケール画像
     """
-    bin_img = img
-    if method == THRESH_OTSU:
-        inter_vals = list()
-        for th in range(0, 256):
-            inter_val = 0
-            if np.count_nonzero(img<th) > 0 and np.count_nonzero(img>=th) > 0:
-                mean0 = np.mean(img)
-                mean1 = np.mean(img[img<th])
-                count1 = np.count_nonzero(img<th)
-                mean2 = np.mean(img[img>=th])
-                count2 = np.count_nonzero(img>=th)
-                inter_val = count1*((mean1-mean0)**2) + count2*((mean2-mean0)**2) / (count1 + count2)
-            inter_vals.append(inter_val)
-        threshold = np.nanargmax(inter_vals)
-        bin_img = np.where(img<threshold, 0, 255)
-    else:
-        print("unknown method")
+    gray_img = np.mean(img, axis=1)
+    return gray_img
 
-    return bin_img
+def saveHist(img:np.ndarray, output_path:str):
+    """
+        - Description
+            入力されたグレースケール画像のヒストグラムを画像として保存する
+        - Arg
+            img:np.ndarray  -> グレースケール画像
+            output_path:str -> 保存先パス
+        - Ret:
+            None
+    """
+    _, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.hist(img, range=(0, 255), bins=256)
+    plt.savefig(output_path)
 
-def saveBitMap(img:np.ndarray, header:bytearray):
+def convert_LGLT(img:np.ndarray) -> np.ndarray:
+    """
+        - Description
+            濃度線形変換を行う
+        - Arg
+            img:np.ndarray      -> 入力画像（グレースケール）
+        - Ret
+            ret_img             -> 濃度線形変換後の画像
+    """
+    ret_img = img - np.min(img)  # 最小値を0に
+    saveHist(img=ret_img, output_path="test1.jpg")
+    ret_img = ret_img * (255 / (np.max(img)-np.min(img)))  # 最大値が255になるように乗算
+    saveHist(img=ret_img, output_path="test2.jpg")
+    return ret_img
+
+def saveBitMap(img:np.ndarray, header:bytearray, output_path:str):
     """
         - Description
             BitMap形式で保存を行う
@@ -89,16 +99,20 @@ def saveBitMap(img:np.ndarray, header:bytearray):
             None
     """
     dat = header + img.astype(np.uint8).tobytes()
-    with open(str(output_path), "wb") as f:
+    with open(output_path, "wb") as f:
         f.write(dat)
 
 
 if __name__ == "__main__":
     src_path = Path("./data/Lenna.bmp")
-    output_path = Path("./data/Lenna_output_binary.bmp")
+    gray_path = Path("./data/Lenna_gray.bmp")
+    hist_path = Path("./data/Lenna_hist.jpg")
 
     info, header, img = readBitMapData(str(src_path))
-    bin_img = convertBinaryData(img=img[:,0], method=THRESH_OTSU)
-    img[:,0], img[:,1], img[:,2]= bin_img, bin_img, bin_img
+    gray_img = getGrayScale(img=img)
+    gray_img = convert_LGLT(img=gray_img)
+    gray_save_img = np.zeros((gray_img.shape[0],3))
+    for i in range(3):
+        gray_save_img[:,i] = gray_img
+    saveBitMap(img=gray_save_img, header=header, output_path=str(gray_path))
 
-    saveBitMap(img=img, header=header)
